@@ -24,7 +24,7 @@ import {
   CheckCircleOutlined,
   WarningOutlined,
   CloudServerOutlined,
-  GlobalOutlined,
+  StopOutlined,
 } from "@ant-design/icons";
 import {
   BrowserRouter,
@@ -54,15 +54,15 @@ const { Header, Content, Sider } = Layout;
 const { Title } = Typography;
 
 // --- 子組件：域名列表 (可重用) ---
-const DomainListTable: React.FC<{ filterStatus: string }> = ({
-  filterStatus,
-}) => {
+const DomainListTable: React.FC<{
+  filterStatus?: string;
+  ignoredFilter: string;
+}> = ({ filterStatus, ignoredFilter }) => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-
-  // [新增狀態] 篩選器狀態
   const [onlyProxied, setOnlyProxied] = useState(false);
-  const [selectedZone, setSelectedZone] = useState<string | null>(null); // [新增] 選中的主域名
+  const [selectedZone, setSelectedZone] = useState<string | null>(null);
+
   const queryClient = useQueryClient();
 
   // 1. 獲取主域名列表 (用於下拉選單)
@@ -80,15 +80,16 @@ const DomainListTable: React.FC<{ filterStatus: string }> = ({
       filterStatus,
       onlyProxied,
       selectedZone,
+      ignoredFilter,
     ],
     queryFn: () =>
       fetchDomains(
         page,
         pageSize,
         "expiry_asc",
-        filterStatus,
+        filterStatus || "",
         onlyProxied ? "true" : "",
-        "",
+        ignoredFilter,
         selectedZone || ""
       ),
     refetchInterval: 5000,
@@ -111,13 +112,7 @@ const DomainListTable: React.FC<{ filterStatus: string }> = ({
       dataIndex: "status",
       width: 110,
       render: (status: string, record) => {
-        if (record.is_ignored) {
-          return (
-            <Tag icon={<SafetyCertificateOutlined />} color="red">
-              已忽略
-            </Tag>
-          );
-        }
+        if (record.is_ignored) return <Tag icon={<StopOutlined />}>已忽略</Tag>;
         let color = "default";
         let text = status;
         let icon = <CheckCircleOutlined />;
@@ -168,7 +163,7 @@ const DomainListTable: React.FC<{ filterStatus: string }> = ({
             {text}
           </span>
           {record.is_proxied && (
-            <Tooltip title="Cloudflare Proxy ON">
+            <Tooltip title="Proxy ON">
               <CloudServerOutlined style={{ color: "#fa8c16" }} />
             </Tooltip>
           )}
@@ -185,6 +180,7 @@ const DomainListTable: React.FC<{ filterStatus: string }> = ({
       title: "剩餘天數",
       dataIndex: "days_remaining",
       render: (days: number, record) => {
+        if (record.is_ignored) return <span style={{ color: "#999" }}>-</span>; // 忽略的不顯示天數
         if (record.status === "unresolvable" || record.status === "pending")
           return <span style={{ color: "#ccc" }}>-</span>;
         let color = "green";
@@ -246,11 +242,7 @@ const DomainListTable: React.FC<{ filterStatus: string }> = ({
   ];
 
   return (
-    <Card
-      bordered={false}
-      style={{ borderRadius: "8px", boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}
-    >
-      {/* 過濾工具列 */}
+    <Card bordered={false} style={{ borderRadius: "8px" }}>
       <div
         style={{
           marginBottom: 16,
@@ -262,7 +254,6 @@ const DomainListTable: React.FC<{ filterStatus: string }> = ({
           borderRadius: "4px",
         }}
       >
-        {/* [新增] 主域名下拉選單 */}
         <div style={{ display: "flex", alignItems: "center" }}>
           <span style={{ marginRight: 8, fontWeight: 500 }}>主域名:</span>
           <Select
@@ -272,12 +263,11 @@ const DomainListTable: React.FC<{ filterStatus: string }> = ({
             showSearch
             onChange={(value) => {
               setSelectedZone(value);
-              setPage(1); // 切換域名時重置頁碼
+              setPage(1);
             }}
             options={zones?.map((z) => ({ label: z, value: z }))}
           />
         </div>
-
         <div
           style={{
             width: 1,
@@ -286,7 +276,6 @@ const DomainListTable: React.FC<{ filterStatus: string }> = ({
             margin: "0 8px",
           }}
         ></div>
-
         <Space>
           <span>只顯示 Proxy (橘雲):</span>
           <Switch checked={onlyProxied} onChange={setOnlyProxied} />
@@ -305,7 +294,6 @@ const DomainListTable: React.FC<{ filterStatus: string }> = ({
             setPage(p);
             setPageSize(ps);
           },
-          showSizeChanger: true,
         }}
       />
     </Card>
@@ -334,6 +322,11 @@ const MainLayout: React.FC = () => {
     mutationFn: scanDomains,
     onSuccess: () => message.success("背景掃描已啟動"),
   });
+
+  // 動態標題
+  let pageTitle = "監控儀表板";
+  if (location.pathname === "/unresolvable") pageTitle = "DNS 解析異常列表";
+  if (location.pathname === "/ignored") pageTitle = "已停止監控列表";
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -371,6 +364,12 @@ const MainLayout: React.FC = () => {
               icon: <DisconnectOutlined />,
               label: <Link to="/unresolvable">無法解析域名</Link>,
             },
+            // [新增] 側邊欄選項
+            {
+              key: "/ignored",
+              icon: <StopOutlined />,
+              label: <Link to="/ignored">已停止監控</Link>,
+            },
           ]}
         />
       </Sider>
@@ -385,7 +384,7 @@ const MainLayout: React.FC = () => {
           }}
         >
           <Title level={4} style={{ margin: 0 }}>
-            {location.pathname === "/" ? "監控儀表板" : "DNS 解析異常列表"}
+            {pageTitle}
           </Title>
           <Space>
             <Button
@@ -407,16 +406,32 @@ const MainLayout: React.FC = () => {
         </Header>
         <Content style={{ margin: "24px 16px", padding: 24, minHeight: 280 }}>
           <Routes>
-            {/* 首頁：顯示 active_only (排除 unresolvable) */}
+            {/* 1. 首頁：active_only, ignored=false */}
             <Route
               path="/"
-              element={<DomainListTable filterStatus="active_only" />}
+              element={
+                <DomainListTable
+                  filterStatus="active_only"
+                  ignoredFilter="false"
+                />
+              }
             />
 
-            {/* 無法解析頁：只顯示 unresolvable */}
+            {/* 2. 無法解析：unresolvable, ignored=false */}
             <Route
               path="/unresolvable"
-              element={<DomainListTable filterStatus="unresolvable" />}
+              element={
+                <DomainListTable
+                  filterStatus="unresolvable"
+                  ignoredFilter="false"
+                />
+              }
+            />
+
+            {/* 3. [新增] 已忽略：不限狀態, ignored=true */}
+            <Route
+              path="/ignored"
+              element={<DomainListTable ignoredFilter="true" />}
             />
           </Routes>
         </Content>
