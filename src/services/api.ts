@@ -32,3 +32,16 @@ export const fetchZones = async () => {
     const response = await api.get<{ data: string[] }>('/zones');
     return response.data.data;
 };
+
+export const getSettings = async () => {
+    const res = await api.get('/settings');
+    return res.data.data;
+};
+
+export const saveSettings = async (webhookUrl: string) => {
+    return api.post('/settings', { webhook_url: webhookUrl });
+};
+
+export const testWebhook = async (webhookUrl: string) => {
+    return api.post('/settings/test', { webhook_url: webhookUrl });
+};

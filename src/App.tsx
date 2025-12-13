@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import {
   Switch,
   Select,
+  Drawer,
+  Input,
   Form,
   Layout,
   Menu,
@@ -25,6 +27,7 @@ import {
   WarningOutlined,
   CloudServerOutlined,
   StopOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 import {
   BrowserRouter,
@@ -43,6 +46,9 @@ import {
   syncDomains,
   fetchZones,
   updateDomainSettings,
+  testWebhook,
+  saveSettings,
+  getSettings,
 } from "./services/api";
 import type { SSLCertificate } from "./types";
 import type { ColumnsType } from "antd/es/table";
@@ -300,6 +306,85 @@ const DomainListTable: React.FC<{
   );
 };
 
+// --- 子組件：設定抽屜 ---
+const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
+  open,
+  onClose,
+}) => {
+  const [form] = Form.useForm();
+  const queryClient = useQueryClient();
+
+  // 載入設定
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: getSettings,
+    enabled: open, // 只有打開時才載入
+  });
+
+  // 填入表單
+  React.useEffect(() => {
+    if (settings) {
+      form.setFieldsValue({ webhook_url: settings.webhook_url });
+    }
+  }, [settings, form]);
+
+  const saveMutation = useMutation({
+    mutationFn: (values: { webhook_url: string }) =>
+      saveSettings(values.webhook_url),
+    onSuccess: () => {
+      message.success("設定已儲存");
+      onClose();
+    },
+  });
+
+  const testMutation = useMutation({
+    mutationFn: () => testWebhook(form.getFieldValue("webhook_url")),
+    onSuccess: () => message.success("測試訊息已發送，請檢查您的通訊軟體"),
+    onError: (err: any) =>
+      message.error("測試失敗: " + err.response?.data?.error),
+  });
+
+  return (
+    <Drawer
+      title="系統設定"
+      placement="right"
+      onClose={onClose}
+      open={open}
+      width={400}
+    >
+      <Form
+        layout="vertical"
+        form={form}
+        onFinish={(v) => saveMutation.mutate(v)}
+      >
+        <Form.Item
+          label="Webhook URL (Slack/Discord/Teams)"
+          name="webhook_url"
+          extra="當憑證剩餘天數 < 14 天或發生異常時會發送通知。"
+        >
+          <Input placeholder="https://hooks.slack.com/services/..." />
+        </Form.Item>
+
+        <Space style={{ width: "100%", justifyContent: "space-between" }}>
+          <Button
+            onClick={() => testMutation.mutate()}
+            loading={testMutation.isPending}
+          >
+            發送測試訊息
+          </Button>
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={saveMutation.isPending}
+          >
+            儲存設定
+          </Button>
+        </Space>
+      </Form>
+    </Drawer>
+  );
+};
+
 // --- 主 Layout ---
 const MainLayout: React.FC = () => {
   const {
@@ -307,7 +392,7 @@ const MainLayout: React.FC = () => {
   } = theme.useToken();
   const location = useLocation();
   const queryClient = useQueryClient();
-
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // 操作按鈕邏輯
   const syncMutation = useMutation({
     mutationFn: syncDomains,
@@ -388,6 +473,12 @@ const MainLayout: React.FC = () => {
           </Title>
           <Space>
             <Button
+              icon={<SettingOutlined />}
+              onClick={() => setSettingsOpen(true)}
+            >
+              設定
+            </Button>
+            <Button
               icon={<CloudSyncOutlined />}
               onClick={() => syncMutation.mutate()}
               loading={syncMutation.isPending}
@@ -435,6 +526,10 @@ const MainLayout: React.FC = () => {
             />
           </Routes>
         </Content>
+        <SettingsDrawer
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+        />
       </Layout>
     </Layout>
   );
