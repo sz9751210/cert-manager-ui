@@ -3,6 +3,7 @@ import {
   Alert,
   Switch,
   Select,
+  Card,
   Drawer,
   Input,
   Form,
@@ -17,7 +18,6 @@ import {
   Table,
   Tag,
   Tooltip,
-  Card,
 } from "antd";
 import {
   DashboardOutlined,
@@ -51,7 +51,9 @@ import {
   testNotification,
   saveSettings,
   getSettings,
+  fetchStats,
 } from "./services/api";
+import DashboardCharts from "./components/DashboardCharts";
 import type { SSLCertificate } from "./types";
 import type { ColumnsType } from "antd/es/table";
 
@@ -65,7 +67,8 @@ const { Title } = Typography;
 const DomainListTable: React.FC<{
   filterStatus?: string;
   ignoredFilter: string;
-}> = ({ filterStatus, ignoredFilter }) => {
+  showCharts?: boolean; // [新增] 控制是否顯示圖表
+}> = ({ filterStatus, ignoredFilter, showCharts }) => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [onlyProxied, setOnlyProxied] = useState(false);
@@ -112,6 +115,13 @@ const DomainListTable: React.FC<{
       queryClient.invalidateQueries({ queryKey: ["domains"] });
     },
     onError: () => message.error("更新失敗"),
+  });
+
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ["stats"],
+    queryFn: fetchStats,
+    enabled: !!showCharts, // 只有 showCharts=true 才去抓
+    refetchInterval: 10000,
   });
 
   const columns: ColumnsType<SSLCertificate> = [
@@ -250,61 +260,67 @@ const DomainListTable: React.FC<{
   ];
 
   return (
-    <Card bordered={false} style={{ borderRadius: "8px" }}>
-      <div
-        style={{
-          marginBottom: 16,
-          display: "flex",
-          gap: 16,
-          alignItems: "center",
-          padding: "12px",
-          background: "#fafafa",
-          borderRadius: "4px",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center" }}>
-          <span style={{ marginRight: 8, fontWeight: 500 }}>主域名:</span>
-          <Select
-            style={{ width: 200 }}
-            placeholder="選擇主域名 (All)"
-            allowClear
-            showSearch
-            onChange={(value) => {
-              setSelectedZone(value);
-              setPage(1);
-            }}
-            options={zones?.map((z) => ({ label: z, value: z }))}
-          />
-        </div>
+    <div>
+      {" "}
+      {/* 包一層 div */}
+      {/* [新增] 顯示圖表 */}
+      {showCharts && <DashboardCharts stats={stats} loading={statsLoading} />}
+      <Card bordered={false} style={{ borderRadius: "8px" }}>
         <div
           style={{
-            width: 1,
-            height: 24,
-            background: "#e0e0e0",
-            margin: "0 8px",
+            marginBottom: 16,
+            display: "flex",
+            gap: 16,
+            alignItems: "center",
+            padding: "12px",
+            background: "#fafafa",
+            borderRadius: "4px",
           }}
-        ></div>
-        <Space>
-          <span>只顯示 Proxy (橘雲):</span>
-          <Switch checked={onlyProxied} onChange={setOnlyProxied} />
-        </Space>
-      </div>
-      <Table
-        columns={columns}
-        dataSource={data?.data}
-        rowKey="id"
-        loading={isLoading || isFetching}
-        pagination={{
-          current: page,
-          pageSize: pageSize,
-          total: data?.total,
-          onChange: (p, ps) => {
-            setPage(p);
-            setPageSize(ps);
-          },
-        }}
-      />
-    </Card>
+        >
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <span style={{ marginRight: 8, fontWeight: 500 }}>主域名:</span>
+            <Select
+              style={{ width: 200 }}
+              placeholder="選擇主域名 (All)"
+              allowClear
+              showSearch
+              onChange={(value) => {
+                setSelectedZone(value);
+                setPage(1);
+              }}
+              options={zones?.map((z) => ({ label: z, value: z }))}
+            />
+          </div>
+          <div
+            style={{
+              width: 1,
+              height: 24,
+              background: "#e0e0e0",
+              margin: "0 8px",
+            }}
+          ></div>
+          <Space>
+            <span>只顯示 Proxy (橘雲):</span>
+            <Switch checked={onlyProxied} onChange={setOnlyProxied} />
+          </Space>
+        </div>
+        <Table
+          columns={columns}
+          dataSource={data?.data}
+          rowKey="id"
+          loading={isLoading || isFetching}
+          pagination={{
+            current: page,
+            pageSize: pageSize,
+            total: data?.total,
+            onChange: (p, ps) => {
+              setPage(p);
+              setPageSize(ps);
+            },
+          }}
+        />
+      </Card>
+    </div>
   );
 };
 
@@ -608,6 +624,7 @@ const MainLayout: React.FC = () => {
                 <DomainListTable
                   filterStatus="active_only"
                   ignoredFilter="false"
+                  showCharts={true}
                 />
               }
             />
@@ -619,6 +636,7 @@ const MainLayout: React.FC = () => {
                 <DomainListTable
                   filterStatus="unresolvable"
                   ignoredFilter="false"
+                  showCharts={false}
                 />
               }
             />
@@ -626,7 +644,7 @@ const MainLayout: React.FC = () => {
             {/* 3. [新增] 已忽略：不限狀態, ignored=true */}
             <Route
               path="/ignored"
-              element={<DomainListTable ignoredFilter="true" />}
+              element={<DomainListTable ignoredFilter="true" showCharts={false} />}
             />
           </Routes>
         </Content>

@@ -57,3 +57,17 @@ export interface NotificationSettings {
     telegram_bot_token: string;
     telegram_chat_id: string;
 }
+
+// 定義型別
+export interface DashboardStats {
+    total_domains: number;
+    status_counts: Record<string, number>;
+    expiry_counts: Record<string, number>;
+    issuer_counts: Record<string, number>;
+}
+
+// 新增 API
+export const fetchStats = async () => {
+    const res = await api.get<{ data: DashboardStats }>('/stats');
+    return res.data.data;
+};
