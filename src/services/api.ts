@@ -33,15 +33,27 @@ export const fetchZones = async () => {
     return response.data.data;
 };
 
+// 儲存設定
+export const saveSettings = async (settings: NotificationSettings) => {
+    return api.post('/settings', settings);
+};
+
+// 測試設定 (傳入當前表單的值)
+export const testNotification = async (settings: NotificationSettings) => {
+    return api.post('/settings/test', settings);
+};
+
+// 獲取設定的回傳值也要改
 export const getSettings = async () => {
-    const res = await api.get('/settings');
+    const res = await api.get<{ data: NotificationSettings }>('/settings');
     return res.data.data;
 };
 
-export const saveSettings = async (webhookUrl: string) => {
-    return api.post('/settings', { webhook_url: webhookUrl });
-};
-
-export const testWebhook = async (webhookUrl: string) => {
-    return api.post('/settings/test', { webhook_url: webhookUrl });
-};
+// 定義設定的型別
+export interface NotificationSettings {
+    webhook_enabled: boolean;
+    webhook_url: string;
+    telegram_enabled: boolean;
+    telegram_bot_token: string;
+    telegram_chat_id: string;
+}

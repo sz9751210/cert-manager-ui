@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import {
+  Alert,
   Switch,
   Select,
   Drawer,
   Input,
   Form,
+  Tabs,
   Layout,
   Menu,
   theme,
@@ -46,7 +48,7 @@ import {
   syncDomains,
   fetchZones,
   updateDomainSettings,
-  testWebhook,
+  testNotification,
   saveSettings,
   getSettings,
 } from "./services/api";
@@ -312,25 +314,24 @@ const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
   onClose,
 }) => {
   const [form] = Form.useForm();
-  const queryClient = useQueryClient();
 
-  // 載入設定
   const { data: settings } = useQuery({
     queryKey: ["settings"],
     queryFn: getSettings,
-    enabled: open, // 只有打開時才載入
+    enabled: open,
   });
 
-  // 填入表單
   React.useEffect(() => {
     if (settings) {
-      form.setFieldsValue({ webhook_url: settings.webhook_url });
+      form.setFieldsValue(settings);
+    } else {
+      // 預設值
+      form.setFieldsValue({ webhook_enabled: false, telegram_enabled: false });
     }
   }, [settings, form]);
 
   const saveMutation = useMutation({
-    mutationFn: (values: { webhook_url: string }) =>
-      saveSettings(values.webhook_url),
+    mutationFn: (values: any) => saveSettings(values),
     onSuccess: () => {
       message.success("設定已儲存");
       onClose();
@@ -338,39 +339,143 @@ const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
   });
 
   const testMutation = useMutation({
-    mutationFn: () => testWebhook(form.getFieldValue("webhook_url")),
-    onSuccess: () => message.success("測試訊息已發送，請檢查您的通訊軟體"),
+    mutationFn: () => testNotification(form.getFieldsValue()), // 傳送當前表單所有值
+    onSuccess: () => message.success("測試訊息已發送"),
     onError: (err: any) =>
-      message.error("測試失敗: " + err.response?.data?.error),
+      message.error("測試失敗: " + (err.response?.data?.error || "未知錯誤")),
   });
 
   return (
     <Drawer
-      title="系統設定"
+      title="通知設定"
       placement="right"
       onClose={onClose}
       open={open}
-      width={400}
+      width={480}
     >
       <Form
         layout="vertical"
         form={form}
         onFinish={(v) => saveMutation.mutate(v)}
       >
-        <Form.Item
-          label="Webhook URL (Slack/Discord/Teams)"
-          name="webhook_url"
-          extra="當憑證剩餘天數 < 14 天或發生異常時會發送通知。"
-        >
-          <Input placeholder="https://hooks.slack.com/services/..." />
-        </Form.Item>
+        <Alert
+          message="請至少啟用一種通知方式以接收告警。"
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
 
-        <Space style={{ width: "100%", justifyContent: "space-between" }}>
+        <Tabs
+          defaultActiveKey="webhook"
+          items={[
+            {
+              key: "webhook",
+              label: "Webhook",
+              children: (
+                <div style={{ marginTop: 12 }}>
+                  <Form.Item
+                    name="webhook_enabled"
+                    label="啟用 Webhook"
+                    valuePropName="checked"
+                  >
+                    <Switch />
+                  </Form.Item>
+                  <Form.Item
+                    noStyle
+                    shouldUpdate={(prev, curr) =>
+                      prev.webhook_enabled !== curr.webhook_enabled
+                    }
+                  >
+                    {({ getFieldValue }) =>
+                      getFieldValue("webhook_enabled") && (
+                        <Form.Item
+                          label="URL (Slack/Discord/Teams)"
+                          name="webhook_url"
+                          rules={[
+                            { required: true, message: "請輸入 Webhook URL" },
+                          ]}
+                        >
+                          <Input placeholder="https://hooks.slack.com/..." />
+                        </Form.Item>
+                      )
+                    }
+                  </Form.Item>
+                </div>
+              ),
+            },
+            {
+              key: "telegram",
+              label: "Telegram",
+              children: (
+                <div style={{ marginTop: 12 }}>
+                  <Form.Item
+                    name="telegram_enabled"
+                    label="啟用 Telegram"
+                    valuePropName="checked"
+                  >
+                    <Switch />
+                  </Form.Item>
+                  <Form.Item
+                    noStyle
+                    shouldUpdate={(prev, curr) =>
+                      prev.telegram_enabled !== curr.telegram_enabled
+                    }
+                  >
+                    {({ getFieldValue }) =>
+                      getFieldValue("telegram_enabled") && (
+                        <>
+                          <Form.Item
+                            label="Bot Token"
+                            name="telegram_bot_token"
+                            rules={[
+                              { required: true, message: "請輸入 Bot Token" },
+                            ]}
+                            help={
+                              <a
+                                href="https://t.me/BotFather"
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                向 @BotFather 申請
+                              </a>
+                            }
+                          >
+                            <Input placeholder="123456789:ABCdef..." />
+                          </Form.Item>
+                          <Form.Item
+                            label="Chat ID"
+                            name="telegram_chat_id"
+                            rules={[
+                              { required: true, message: "請輸入 Chat ID" },
+                            ]}
+                            help="可以是個人 ID 或群組 ID (需先將 Bot 加入群組)"
+                          >
+                            <Input placeholder="-987654321" />
+                          </Form.Item>
+                        </>
+                      )
+                    }
+                  </Form.Item>
+                </div>
+              ),
+            },
+          ]}
+        />
+
+        <div
+          style={{
+            marginTop: 24,
+            paddingTop: 16,
+            borderTop: "1px solid #f0f0f0",
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
           <Button
             onClick={() => testMutation.mutate()}
             loading={testMutation.isPending}
           >
-            發送測試訊息
+            發送測試
           </Button>
           <Button
             type="primary"
@@ -379,12 +484,11 @@ const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
           >
             儲存設定
           </Button>
-        </Space>
+        </div>
       </Form>
     </Drawer>
   );
 };
-
 // --- 主 Layout ---
 const MainLayout: React.FC = () => {
   const {
