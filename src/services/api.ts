@@ -106,3 +106,22 @@ export const saveAcmeEmail = async (email: string) => {
 export const renewCert = async (domain: string) => {
     return api.post('/domains/renew', { domain });
 };
+
+export const batchUpdateSettings = async (ids: string[], isIgnored: boolean) => {
+    return api.post('/domains/batch-settings', { ids, is_ignored: isIgnored });
+};
+
+// 匯出 CSV (因為是下載檔案，處理方式不同)
+export const exportDomainsCSV = async () => {
+    const response = await api.get('/domains/export', {
+        responseType: 'blob', // 重要：告訴 axios 這是二進制檔案
+    });
+    // 建立下載連結
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `domains_report_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+};

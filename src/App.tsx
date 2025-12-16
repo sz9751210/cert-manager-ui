@@ -30,6 +30,10 @@ import {
   CloudServerOutlined,
   StopOutlined,
   SettingOutlined,
+  DownloadOutlined,
+  ClearOutlined,
+  EyeInvisibleOutlined,
+  EyeOutlined,
 } from "@ant-design/icons";
 import {
   BrowserRouter,
@@ -54,11 +58,13 @@ import {
   fetchStats,
   saveAcmeEmail,
   renewCert,
+  batchUpdateSettings,
+  exportDomainsCSV,
 } from "./services/api";
 import DashboardCharts from "./components/DashboardCharts";
 import type { SSLCertificate } from "./types";
 import type { ColumnsType } from "antd/es/table";
-import Login from './pages/Login'; // 引入登入頁
+import Login from "./pages/Login"; // 引入登入頁
 
 dayjs.extend(relativeTime);
 dayjs.locale("zh-tw");
@@ -76,7 +82,7 @@ const DomainListTable: React.FC<{
   const [pageSize, setPageSize] = useState(10);
   const [onlyProxied, setOnlyProxied] = useState(false);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
-
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]); // [新增] 存被勾選的 ID
   const queryClient = useQueryClient();
 
   // 1. 獲取主域名列表 (用於下拉選單)
@@ -132,6 +138,29 @@ const DomainListTable: React.FC<{
     onSuccess: () =>
       message.success("續簽任務已在背景啟動，請稍後查看 Log 或重新掃描"),
   });
+
+  // 批量 Mutation
+  const batchMutation = useMutation({
+    mutationFn: ({ ids, val }: { ids: string[]; val: boolean }) =>
+      batchUpdateSettings(ids, val),
+    onSuccess: () => {
+      message.success("批量操作成功");
+      setSelectedRowKeys([]); // 清空勾選
+      queryClient.invalidateQueries({ queryKey: ["domains"] });
+    },
+  });
+
+  // 處理勾選變更
+  const onSelectChange = (newSelectedRowKeys: React.Key[]) => {
+    setSelectedRowKeys(newSelectedRowKeys);
+  };
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: onSelectChange,
+  };
+
+  const hasSelected = selectedRowKeys.length > 0;
 
   const columns: ColumnsType<SSLCertificate> = [
     {
@@ -330,8 +359,65 @@ const DomainListTable: React.FC<{
             <span>只顯示 Proxy (橘雲):</span>
             <Switch checked={onlyProxied} onChange={setOnlyProxied} />
           </Space>
+          {/* 右側：功能按鈕 (匯出) */}
+          <Button icon={<DownloadOutlined />} onClick={exportDomainsCSV}>
+            匯出報表
+          </Button>
         </div>
+        {/* [新增] 批量操作提示條 */}
+        {hasSelected && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "8px 16px",
+              background: "#e6f7ff",
+              border: "1px solid #91d5ff",
+              borderRadius: 4,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <span>已選擇 {selectedRowKeys.length} 個項目</span>
+            <Space>
+              <Button
+                size="small"
+                icon={<EyeInvisibleOutlined />}
+                onClick={() =>
+                  batchMutation.mutate({
+                    ids: selectedRowKeys as string[],
+                    val: true,
+                  })
+                } // val: true 代表設為忽略
+                loading={batchMutation.isPending}
+              >
+                批量略過
+              </Button>
+              <Button
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={() =>
+                  batchMutation.mutate({
+                    ids: selectedRowKeys as string[],
+                    val: false,
+                  })
+                } // val: false 代表開啟監控
+                loading={batchMutation.isPending}
+              >
+                批量開啟監控
+              </Button>
+              <Button
+                size="small"
+                type="text"
+                onClick={() => setSelectedRowKeys([])}
+              >
+                取消
+              </Button>
+            </Space>
+          </div>
+        )}
         <Table
+          rowSelection={rowSelection} // [新增] 開啟勾選功能
           columns={columns}
           dataSource={data?.data}
           rowKey="id"
@@ -722,15 +808,17 @@ const MainLayout: React.FC = () => {
 };
 
 // 保護路由組件
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-        // 沒有 Token，重定向到登入頁
-        // 這裡用 window.location 簡單處理，或是用 Navigate 組件
-        window.location.href = '/login'; 
-        return null;
-    }
-    return <>{children}</>;
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const token = localStorage.getItem("token");
+  if (!token) {
+    // 沒有 Token，重定向到登入頁
+    // 這裡用 window.location 簡單處理，或是用 Navigate 組件
+    window.location.href = "/login";
+    return null;
+  }
+  return <>{children}</>;
 };
 
 const App: React.FC = () => {
@@ -738,13 +826,16 @@ const App: React.FC = () => {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        
+
         {/* 所有其他路徑都包在 MainLayout 內，並受保護 */}
-        <Route path="/*" element={
+        <Route
+          path="/*"
+          element={
             <ProtectedRoute>
-                <MainLayout />
+              <MainLayout />
             </ProtectedRoute>
-        } />
+          }
+        />
       </Routes>
     </BrowserRouter>
   );
