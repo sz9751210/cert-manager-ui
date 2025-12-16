@@ -5,10 +5,12 @@ import {
   Select,
   Card,
   Drawer,
+  Descriptions,
   Input,
   Form,
   Tabs,
   Layout,
+  List,
   Menu,
   theme,
   Typography,
@@ -34,6 +36,7 @@ import {
   ClearOutlined,
   EyeInvisibleOutlined,
   EyeOutlined,
+  InfoCircleOutlined,
 } from "@ant-design/icons";
 import {
   BrowserRouter,
@@ -83,8 +86,12 @@ const DomainListTable: React.FC<{
   const [onlyProxied, setOnlyProxied] = useState(false);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]); // [新增] 存被勾選的 ID
+  const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
+  const [currentRecord, setCurrentRecord] = useState<SSLCertificate | null>(
+    null
+  );
   const queryClient = useQueryClient();
-
+  // [新增] 控制詳情 Drawer 的 state
   // 1. 獲取主域名列表 (用於下拉選單)
   const { data: zones } = useQuery({
     queryKey: ["zones"],
@@ -299,18 +306,30 @@ const DomainListTable: React.FC<{
       title: "操作",
       key: "action",
       render: (_, record) => (
-        <Button
-          size="small"
-          type="link"
-          disabled={record.status === "unresolvable" || record.is_ignored}
-          onClick={() => {
-            if (confirm(`確定要為 ${record.domain_name} 申請新憑證嗎？`)) {
-              renewMutation.mutate(record.domain_name);
-            }
-          }}
-        >
-          續簽 SSL
-        </Button>
+        <Space>
+          <Button
+            type="text"
+            icon={<InfoCircleOutlined />}
+            onClick={() => {
+              setCurrentRecord(record);
+              setDetailDrawerOpen(true);
+            }}
+          >
+            詳情
+          </Button>
+          <Button
+            size="small"
+            type="link"
+            disabled={record.status === "unresolvable" || record.is_ignored}
+            onClick={() => {
+              if (confirm(`確定要為 ${record.domain_name} 申請新憑證嗎？`)) {
+                renewMutation.mutate(record.domain_name);
+              }
+            }}
+          >
+            續簽 SSL
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -432,6 +451,47 @@ const DomainListTable: React.FC<{
             },
           }}
         />
+        {/* [新增] 詳情 Drawer */}
+        <Drawer
+          title="憑證詳細資訊"
+          placement="right"
+          width={500}
+          onClose={() => setDetailDrawerOpen(false)}
+          open={detailDrawerOpen}
+        >
+          {currentRecord && (
+            <>
+              <Descriptions title="基本資訊" column={1} bordered size="small">
+                <Descriptions.Item label="域名">
+                  {currentRecord.domain_name}
+                </Descriptions.Item>
+                <Descriptions.Item label="發行商">
+                  {currentRecord.issuer}
+                </Descriptions.Item>
+                <Descriptions.Item label="生效日">
+                  {dayjs(currentRecord.not_before).format("YYYY-MM-DD HH:mm")}
+                </Descriptions.Item>
+                <Descriptions.Item label="到期日">
+                  {dayjs(currentRecord.not_after).format("YYYY-MM-DD HH:mm")}
+                </Descriptions.Item>
+                <Descriptions.Item label="Cloudflare Proxy">
+                  {currentRecord.is_proxied ? "開啟 (CDN)" : "關閉 (直連)"}
+                </Descriptions.Item>
+              </Descriptions>
+
+              <div style={{ marginTop: 24 }}>
+                <h4>包含的域名 (SANs)</h4>
+                <List
+                  size="small"
+                  bordered
+                  dataSource={currentRecord.sans || []}
+                  renderItem={(item) => <List.Item>{item}</List.Item>}
+                  style={{ maxHeight: 300, overflowY: "auto" }}
+                />
+              </div>
+            </>
+          )}
+        </Drawer>
       </Card>
     </div>
   );

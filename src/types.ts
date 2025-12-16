@@ -23,6 +23,7 @@ export interface SSLCertificate {
     last_check_time: string;
     status: 'active' | 'expired' | 'warning' | 'unresolvable' | 'pending';
     error_msg?: string;
+    sans?: string[];
 }
 
 export interface APIResponse<T> {
