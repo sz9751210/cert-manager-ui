@@ -58,6 +58,7 @@ import {
 import DashboardCharts from "./components/DashboardCharts";
 import type { SSLCertificate } from "./types";
 import type { ColumnsType } from "antd/es/table";
+import Login from './pages/Login'; // 引入登入頁
 
 dayjs.extend(relativeTime);
 dayjs.locale("zh-tw");
@@ -720,10 +721,31 @@ const MainLayout: React.FC = () => {
   );
 };
 
+// 保護路由組件
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        // 沒有 Token，重定向到登入頁
+        // 這裡用 window.location 簡單處理，或是用 Navigate 組件
+        window.location.href = '/login'; 
+        return null;
+    }
+    return <>{children}</>;
+};
+
 const App: React.FC = () => {
   return (
     <BrowserRouter>
-      <MainLayout />
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        
+        {/* 所有其他路徑都包在 MainLayout 內，並受保護 */}
+        <Route path="/*" element={
+            <ProtectedRoute>
+                <MainLayout />
+            </ProtectedRoute>
+        } />
+      </Routes>
     </BrowserRouter>
   );
 };

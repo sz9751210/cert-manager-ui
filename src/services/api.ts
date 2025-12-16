@@ -7,6 +7,32 @@ const api = axios.create({
     baseURL: 'http://localhost:8080/api/v1',
 });
 
+// [新增] Request Interceptor: 自動帶上 Token
+api.interceptors.request.use((config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+});
+
+// [新增] Response Interceptor: 處理 401 過期
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response && error.response.status === 401) {
+            // Token 失效，清除並跳轉
+            localStorage.removeItem('token');
+            // 因為這裡不是 React Component，我們直接用 window.location 跳轉
+            // 或者您可以只拋出錯誤，讓 Component 處理
+            if (window.location.pathname !== '/login') {
+                window.location.href = '/login';
+            }
+        }
+        return Promise.reject(error);
+    }
+);
+
 // 修改 fetchDomains 增加 status 參數
 export const fetchDomains = async (page = 1, limit = 10, sort = '', status = '', proxied = '', ignored = '', zone = '') => {
     const response = await api.get<APIResponse<SSLCertificate[]>>('/domains', {
