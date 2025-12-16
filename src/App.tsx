@@ -52,6 +52,8 @@ import {
   saveSettings,
   getSettings,
   fetchStats,
+  saveAcmeEmail,
+  renewCert,
 } from "./services/api";
 import DashboardCharts from "./components/DashboardCharts";
 import type { SSLCertificate } from "./types";
@@ -122,6 +124,12 @@ const DomainListTable: React.FC<{
     queryFn: fetchStats,
     enabled: !!showCharts, // 只有 showCharts=true 才去抓
     refetchInterval: 10000,
+  });
+
+  const renewMutation = useMutation({
+    mutationFn: (domain: string) => renewCert(domain),
+    onSuccess: () =>
+      message.success("續簽任務已在背景啟動，請稍後查看 Log 或重新掃描"),
   });
 
   const columns: ColumnsType<SSLCertificate> = [
@@ -257,6 +265,24 @@ const DomainListTable: React.FC<{
         </Tooltip>
       ),
     },
+    {
+      title: "操作",
+      key: "action",
+      render: (_, record) => (
+        <Button
+          size="small"
+          type="link"
+          disabled={record.status === "unresolvable" || record.is_ignored}
+          onClick={() => {
+            if (confirm(`確定要為 ${record.domain_name} 申請新憑證嗎？`)) {
+              renewMutation.mutate(record.domain_name);
+            }
+          }}
+        >
+          續簽 SSL
+        </Button>
+      ),
+    },
   ];
 
   return (
@@ -359,6 +385,11 @@ const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
     onSuccess: () => message.success("測試訊息已發送"),
     onError: (err: any) =>
       message.error("測試失敗: " + (err.response?.data?.error || "未知錯誤")),
+  });
+
+  const saveAcmeMutation = useMutation({
+    mutationFn: (email: string) => saveAcmeEmail(email),
+    onSuccess: () => message.success("Email 已儲存"),
   });
 
   return (
@@ -472,6 +503,36 @@ const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
                       )
                     }
                   </Form.Item>
+                </div>
+              ),
+            },
+            {
+              key: "acme",
+              label: "SSL 續簽",
+              children: (
+                <div style={{ marginTop: 12 }}>
+                  <Alert
+                    message="Let's Encrypt 整合"
+                    description="設定 Email 後，系統將自動註冊帳號。之後您可對過期域名執行自動續簽 (DNS-01 驗證)。"
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                  />
+                  <Form.Item
+                    label="註冊 Email"
+                    name="acme_email"
+                    rules={[{ type: "email", message: "格式不正確" }]}
+                  >
+                    <Input placeholder="admin@example.com" />
+                  </Form.Item>
+                  <Button
+                    onClick={() =>
+                      saveAcmeMutation.mutate(form.getFieldValue("acme_email"))
+                    }
+                    loading={saveAcmeMutation.isPending}
+                  >
+                    儲存 Email
+                  </Button>
                 </div>
               ),
             },
@@ -644,7 +705,9 @@ const MainLayout: React.FC = () => {
             {/* 3. [新增] 已忽略：不限狀態, ignored=true */}
             <Route
               path="/ignored"
-              element={<DomainListTable ignoredFilter="true" showCharts={false} />}
+              element={
+                <DomainListTable ignoredFilter="true" showCharts={false} />
+              }
             />
           </Routes>
         </Content>

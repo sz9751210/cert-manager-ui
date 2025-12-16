@@ -71,3 +71,12 @@ export const fetchStats = async () => {
     const res = await api.get<{ data: DashboardStats }>('/stats');
     return res.data.data;
 };
+
+// 新增 ACME 設定的 API
+export const saveAcmeEmail = async (email: string) => {
+    return api.post('/settings/acme', { email });
+};
+
+export const renewCert = async (domain: string) => {
+    return api.post('/domains/renew', { domain });
+};
