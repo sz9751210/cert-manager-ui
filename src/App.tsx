@@ -37,6 +37,7 @@ import {
   EyeInvisibleOutlined,
   EyeOutlined,
   InfoCircleOutlined,
+  GlobalOutlined,
 } from "@ant-design/icons";
 import {
   BrowserRouter,
@@ -303,6 +304,35 @@ const DomainListTable: React.FC<{
         if (days < 30) color = "orange";
         if (days < 7) color = "red";
         return <span style={{ color, fontWeight: "bold" }}>{days} 天</span>;
+      },
+    },
+    {
+      title: "網域到期",
+      dataIndex: "domain_days_left",
+      width: 120,
+      render: (days: number, record) => {
+        if (record.is_ignored) return "-";
+        // 如果 days 為 0 或負數，可能是沒查到或者是真的過期
+        // 為了區分 "沒查到" (通常是 0) 和 "過期"，可以檢查 domain_expiry_date 是否為空
+        if (!record.domain_expiry_date)
+          return <span style={{ color: "#ccc" }}>-</span>;
+
+        let color = "default";
+        if (days < 30) color = "red";
+        else if (days < 60) color = "orange";
+        else color = "green";
+
+        return (
+          <Tooltip
+            title={`到期日: ${dayjs(record.domain_expiry_date).format(
+              "YYYY-MM-DD"
+            )}`}
+          >
+            <Tag icon={<GlobalOutlined />} color={color}>
+              {days} 天
+            </Tag>
+          </Tooltip>
+        );
       },
     },
     {
