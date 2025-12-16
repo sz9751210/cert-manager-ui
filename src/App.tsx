@@ -239,6 +239,59 @@ const DomainListTable: React.FC<{
       responsive: ["md"], // 在手機版隱藏，避免太擁擠
       render: (text: string) => text || "-",
     },
+    // [新增] HTTP 狀態欄位
+    {
+      title: "HTTP",
+      dataIndex: "http_status_code",
+      width: 100,
+      render: (code: number, record) => {
+        if (record.is_ignored) return <span style={{ color: "#ccc" }}>-</span>;
+
+        // 根據狀態碼顯示不同顏色的 Tag
+        if (!code || code === 0) {
+          return <Tag color="red">Down</Tag>;
+        }
+        if (code >= 200 && code < 300) {
+          return (
+            <Tooltip title={`回應時間: ${record.latency}ms`}>
+              <Tag color="success">{code}</Tag>
+            </Tooltip>
+          );
+        }
+        if (code >= 300 && code < 400) {
+          return <Tag color="blue">{code}</Tag>; // Redirect
+        }
+        if (code >= 400 && code < 500) {
+          return <Tag color="orange">{code}</Tag>; // 404 Not Found
+        }
+        if (code >= 500) {
+          return <Tag color="error">{code}</Tag>; // 500 Server Error
+        }
+        return <Tag>{code}</Tag>;
+      },
+    },
+
+    // [新增] TLS 版本欄位
+    {
+      title: "TLS",
+      dataIndex: "tls_version",
+      width: 100,
+      responsive: ["lg"], // 寬螢幕才顯示
+      render: (ver: string, record) => {
+        if (record.is_ignored || !ver) return "-";
+
+        // TLS 1.0/1.1 標示為危險
+        let color = "cyan"; // 預設安全 (1.2, 1.3)
+        if (ver === "TLS 1.0" || ver === "TLS 1.1") {
+          color = "volcano";
+        }
+        if (ver === "Unknown") {
+          color = "default";
+        }
+
+        return <Tag color={color}>{ver}</Tag>;
+      },
+    },
     {
       title: "剩餘天數",
       dataIndex: "days_remaining",

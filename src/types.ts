@@ -24,6 +24,10 @@ export interface SSLCertificate {
     status: 'active' | 'expired' | 'warning' | 'unresolvable' | 'pending';
     error_msg?: string;
     sans?: string[];
+
+    tls_version: string;       // [新增]
+    http_status_code: number;  // [新增]
+    latency: number;           // [新增]
 }
 
 export interface APIResponse<T> {
