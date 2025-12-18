@@ -40,10 +40,39 @@ export interface APIResponse<T> {
 }
 
 export interface NotificationSettings {
+    // --- 原有的連線設定 ---
+    telegram_enabled: boolean;
+    telegram_bot_token: string;
+    telegram_chat_id: string;
+    telegram_template: string; // 到期/異常通知模板
+
+    webhook_enabled: boolean;
+    webhook_url: string;
+    webhook_template: string;
+
+    acme_email: string;
+
+    // --- [新增] 操作通知設定 ---
+    
+    // 1. 新增域名
     notify_on_add: boolean;
     notify_on_add_tpl: string;
+
+    // 2. 刪除域名
     notify_on_delete: boolean;
     notify_on_delete_tpl: string;
+
+    // 3. 續簽結果
     notify_on_renew: boolean;
     notify_on_renew_tpl: string;
+}
+
+export interface DashboardStats {
+    total_domains: number;
+    active_domains: number;
+    expired_domains: number;
+    warning_domains: number; //即將過期
+    unresolvable_domains: number; // 無法解析
+    avg_latency: number;
+    issuer_stats: Record<string, number>;
 }

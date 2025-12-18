@@ -72,7 +72,7 @@ import {
   exportDomainsCSV,
 } from "./services/api";
 import DashboardCharts from "./components/DashboardCharts";
-import type { SSLCertificate } from "./types";
+import type { SSLCertificate, DashboardStats, Notification } from "./types";
 import type { ColumnsType } from "antd/es/table";
 import Login from "./pages/Login"; // 引入登入頁
 
@@ -84,6 +84,35 @@ const { Title } = Typography;
 const { TextArea } = Input;
 const { Panel } = Collapse;
 const { Text } = Typography;
+
+// 定義所有通知的預設模板
+const DEFAULT_TEMPLATES = {
+  // 1. 到期/異常 (最重要)
+  expiry: `⚠️ <b>[監控告警]</b>
+域名: {{.Domain}}
+狀態: {{.Status}}
+剩餘: {{.Days}} 天
+到期: {{.ExpiryDate}}
+IP: {{.IP}}`,
+
+  // 2. 新增子域名
+  add: `🌱 <b>[新增監控]</b>
+域名: {{.Domain}}
+時間: {{.Time}}
+備註: {{.Details}}`,
+
+  // 3. 刪除子域名
+  delete: `🗑 <b>[移除監控]</b>
+域名: {{.Domain}}
+時間: {{.Time}}
+備註: {{.Details}}`,
+
+  // 4. 續簽結果
+  renew: `♻️ <b>[SSL 續簽]</b>
+域名: {{.Domain}}
+時間: {{.Time}}
+結果: {{.Details}}`,
+};
 
 // --- 子組件：域名列表 (可重用) ---
 const DomainListTable: React.FC<{
@@ -671,12 +700,27 @@ const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
     enabled: open,
   });
 
+  // [關鍵邏輯] 初始化表單時，如果後端回傳空字串，就填入預設值
   React.useEffect(() => {
     if (settings) {
-      form.setFieldsValue(settings);
+      form.setFieldsValue({
+        ...settings,
+        // 如果後端是空的，就用預設值，這樣使用者打開就能看到預設文案
+        telegram_template: settings.telegram_template || DEFAULT_TEMPLATES.expiry,
+        notify_on_add_tpl: settings.notify_on_add_tpl || DEFAULT_TEMPLATES.add,
+        notify_on_delete_tpl: settings.notify_on_delete_tpl || DEFAULT_TEMPLATES.delete,
+        notify_on_renew_tpl: settings.notify_on_renew_tpl || DEFAULT_TEMPLATES.renew,
+      });
     } else {
-      // 預設值
-      form.setFieldsValue({ webhook_enabled: false, telegram_enabled: false });
+      // 第一次載入或是空的，直接給全套預設值
+      form.setFieldsValue({
+        webhook_enabled: false,
+        telegram_enabled: false,
+        telegram_template: DEFAULT_TEMPLATES.expiry,
+        notify_on_add_tpl: DEFAULT_TEMPLATES.add,
+        notify_on_delete_tpl: DEFAULT_TEMPLATES.delete,
+        notify_on_renew_tpl: DEFAULT_TEMPLATES.renew,
+      });
     }
   }, [settings, form]);
 
@@ -689,10 +733,9 @@ const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
   });
 
   const testMutation = useMutation({
-    mutationFn: () => testNotification(form.getFieldsValue()), // 傳送當前表單所有值
+    mutationFn: () => testNotification(form.getFieldsValue()),
     onSuccess: () => message.success("測試訊息已發送"),
-    onError: (err: any) =>
-      message.error("測試失敗: " + (err.response?.data?.error || "未知錯誤")),
+    onError: (err: any) => message.error("測試失敗"),
   });
 
   const saveAcmeMutation = useMutation({
@@ -702,283 +745,138 @@ const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
 
   return (
     <Drawer
-      title="通知設定"
+      title="系統設定"
       placement="right"
       onClose={onClose}
       open={open}
-      width={480}
+      width={520} //稍微加寬一點
     >
       <Form
         layout="vertical"
         form={form}
         onFinish={(v) => saveMutation.mutate(v)}
       >
-        <Alert
-          message="請至少啟用一種通知方式以接收告警。"
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
-
-        <Tabs
-          defaultActiveKey="webhook"
-          items={[
-            {
-              key: "webhook",
-              label: "Webhook",
-              children: (
-                <div style={{ marginTop: 12 }}>
-                  <Form.Item
-                    name="webhook_enabled"
-                    label="啟用 Webhook"
-                    valuePropName="checked"
-                  >
-                    <Switch />
-                  </Form.Item>
-                  <Form.Item
-                    noStyle
-                    shouldUpdate={(prev, curr) =>
-                      prev.webhook_enabled !== curr.webhook_enabled
-                    }
-                  >
-                    {({ getFieldValue }) =>
-                      getFieldValue("webhook_enabled") && (
-                        <Form.Item
-                          label="URL (Slack/Discord/Teams)"
-                          name="webhook_url"
-                          rules={[
-                            { required: true, message: "請輸入 Webhook URL" },
-                          ]}
-                        >
-                          <Input placeholder="https://hooks.slack.com/..." />
-                        </Form.Item>
-                      )
-                    }
-                  </Form.Item>
-                  <Form.Item
-                    label="自定義通知模板"
-                    name="webhook_template"
-                    tooltip="支援 Go Template 語法"
-                  >
-                    <TextArea
-                      rows={4}
-                      placeholder="預設值：&#10;⚠️ [監控告警]&#10;域名: {{.Domain}}&#10;剩餘: {{.Days}} 天"
-                    />
-                  </Form.Item>
-                  <VariableCheatSheet />
-                </div>
-              ),
-            },
-            {
-              key: "telegram",
-              label: "Telegram",
-              children: (
-                <div style={{ marginTop: 12 }}>
-                  <Form.Item
-                    name="telegram_enabled"
-                    label="啟用 Telegram"
-                    valuePropName="checked"
-                  >
-                    <Switch />
-                  </Form.Item>
-                  <Form.Item
-                    noStyle
-                    shouldUpdate={(prev, curr) =>
-                      prev.telegram_enabled !== curr.telegram_enabled
-                    }
-                  >
-                    {({ getFieldValue }) =>
-                      getFieldValue("telegram_enabled") && (
+        {/* --- 第一區塊：連線通道設定 (Tabs) --- */}
+        <div style={{ marginBottom: 24 }}>
+            <h3 style={{ marginBottom: 12 }}>📡 連線通道設定</h3>
+            <Tabs
+            defaultActiveKey="telegram"
+            items={[
+                {
+                key: "telegram",
+                label: "Telegram",
+                children: (
+                    <div style={{ marginTop: 8 }}>
+                    <Form.Item name="telegram_enabled" label="啟用 Telegram 通知" valuePropName="checked">
+                        <Switch />
+                    </Form.Item>
+                    <Form.Item noStyle shouldUpdate={(prev, curr) => prev.telegram_enabled !== curr.telegram_enabled}>
+                        {({ getFieldValue }) => getFieldValue("telegram_enabled") && (
                         <>
-                          <Form.Item
-                            label="Bot Token"
-                            name="telegram_bot_token"
-                            rules={[
-                              { required: true, message: "請輸入 Bot Token" },
-                            ]}
-                            help={
-                              <a
-                                href="https://t.me/BotFather"
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                向 @BotFather 申請
-                              </a>
-                            }
-                          >
+                            <Form.Item label="Bot Token" name="telegram_bot_token" rules={[{ required: true }]}>
                             <Input placeholder="123456789:ABCdef..." />
-                          </Form.Item>
-                          <Form.Item
-                            label="Chat ID"
-                            name="telegram_chat_id"
-                            rules={[
-                              { required: true, message: "請輸入 Chat ID" },
-                            ]}
-                            help="可以是個人 ID 或群組 ID (需先將 Bot 加入群組)"
-                          >
+                            </Form.Item>
+                            <Form.Item label="Chat ID" name="telegram_chat_id" rules={[{ required: true }]}>
                             <Input placeholder="-987654321" />
-                          </Form.Item>
-                          <Form.Item
-                            label="自定義通知模板"
-                            name="telegram_template"
-                            tooltip="支援 Go Template 語法"
-                          >
-                            <TextArea
-                              rows={4}
-                              placeholder="預設值：&#10;⚠️ [監控告警]&#10;域名: {{.Domain}}&#10;剩餘: {{.Days}} 天"
-                            />
-                          </Form.Item>
-                          <VariableCheatSheet />
+                            </Form.Item>
                         </>
-                      )
-                    }
-                  </Form.Item>
-                </div>
-              ),
-            },
-            {
-              key: "acme",
-              label: "SSL 續簽",
-              children: (
-                <div style={{ marginTop: 12 }}>
-                  <Alert
-                    message="Let's Encrypt 整合"
-                    description="設定 Email 後，系統將自動註冊帳號。之後您可對過期域名執行自動續簽 (DNS-01 驗證)。"
-                    type="info"
-                    showIcon
-                    style={{ marginBottom: 16 }}
-                  />
-                  <Form.Item
-                    label="註冊 Email"
-                    name="acme_email"
-                    rules={[{ type: "email", message: "格式不正確" }]}
-                  >
-                    <Input placeholder="admin@example.com" />
-                  </Form.Item>
-                  <Button
-                    onClick={() =>
-                      saveAcmeMutation.mutate(form.getFieldValue("acme_email"))
-                    }
-                    loading={saveAcmeMutation.isPending}
-                  >
-                    儲存 Email
-                  </Button>
-                </div>
-              ),
-            },
-          ]}
-        />
-        {/* 新增一個區塊：操作通知設定 */}
-        <div style={{ marginTop: 24 }}>
-          <h3 style={{ marginBottom: 16 }}>操作事件通知</h3>
-          <Collapse defaultActiveKey={["1"]}>
-            {/* 1. 新增域名設定 */}
-            <Panel header="新增域名 (Add Domain)" key="1">
-              <Form.Item
-                name="notify_on_add"
-                valuePropName="checked"
-                label="啟用通知"
-              >
-                <Switch />
-              </Form.Item>
-              {/* 使用 Form.Item 的 dependencies 屬性，只有當開關打開時才顯示模板編輯器 */}
-              <Form.Item
-                noStyle
-                shouldUpdate={(prev, curr) =>
-                  prev.notify_on_add !== curr.notify_on_add
-                }
-              >
-                {({ getFieldValue }) =>
-                  getFieldValue("notify_on_add") && (
-                    <>
-                      <OpVariableCheatSheet />
-                      <Form.Item name="notify_on_add_tpl" label="通知模板">
-                        <TextArea rows={3} placeholder="預設模板..." />
-                      </Form.Item>
-                    </>
-                  )
-                }
-              </Form.Item>
-            </Panel>
-
-            {/* 2. 刪除域名設定 */}
-            <Panel header="刪除域名 (Delete Domain)" key="2">
-              <Form.Item
-                name="notify_on_delete"
-                valuePropName="checked"
-                label="啟用通知"
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item
-                noStyle
-                shouldUpdate={(prev, curr) =>
-                  prev.notify_on_delete !== curr.notify_on_delete
-                }
-              >
-                {({ getFieldValue }) =>
-                  getFieldValue("notify_on_delete") && (
-                    <>
-                      <OpVariableCheatSheet />
-                      <Form.Item name="notify_on_delete_tpl" label="通知模板">
-                        <TextArea rows={3} />
-                      </Form.Item>
-                    </>
-                  )
-                }
-              </Form.Item>
-            </Panel>
-
-            {/* 3. 續簽設定 */}
-            <Panel header="SSL 續簽 (Renew Certificate)" key="3">
-              <Form.Item
-                name="notify_on_renew"
-                valuePropName="checked"
-                label="啟用通知"
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item
-                noStyle
-                shouldUpdate={(prev, curr) =>
-                  prev.notify_on_renew !== curr.notify_on_renew
-                }
-              >
-                {({ getFieldValue }) =>
-                  getFieldValue("notify_on_renew") && (
-                    <>
-                      <OpVariableCheatSheet />
-                      <Form.Item name="notify_on_renew_tpl" label="通知模板">
-                        <TextArea rows={3} />
-                      </Form.Item>
-                    </>
-                  )
-                }
-              </Form.Item>
-            </Panel>
-          </Collapse>
+                        )}
+                    </Form.Item>
+                    </div>
+                ),
+                },
+                {
+                key: "webhook",
+                label: "Webhook",
+                children: (
+                    <div style={{ marginTop: 8 }}>
+                    <Form.Item name="webhook_enabled" label="啟用 Webhook" valuePropName="checked">
+                        <Switch />
+                    </Form.Item>
+                    <Form.Item noStyle shouldUpdate={(prev, curr) => prev.webhook_enabled !== curr.webhook_enabled}>
+                        {({ getFieldValue }) => getFieldValue("webhook_enabled") && (
+                        <Form.Item label="Webhook URL" name="webhook_url" rules={[{ required: true }]}>
+                            <Input placeholder="https://hooks.slack.com/..." />
+                        </Form.Item>
+                        )}
+                    </Form.Item>
+                    </div>
+                ),
+                },
+                {
+                key: "acme",
+                label: "SSL 自動化",
+                children: (
+                    <div style={{ marginTop: 8 }}>
+                    <Form.Item label="Let's Encrypt Email" name="acme_email">
+                        <Input placeholder="admin@example.com" />
+                    </Form.Item>
+                    <Button size="small" onClick={() => saveAcmeMutation.mutate(form.getFieldValue("acme_email"))}>
+                        更新註冊 Email
+                    </Button>
+                    </div>
+                ),
+                },
+            ]}
+            />
         </div>
-        <div
-          style={{
-            marginTop: 24,
-            paddingTop: 16,
-            borderTop: "1px solid #f0f0f0",
-            display: "flex",
-            justifyContent: "space-between",
-          }}
-        >
-          <Button
-            onClick={() => testMutation.mutate()}
-            loading={testMutation.isPending}
-          >
+
+        {/* --- 第二區塊：通知模板管理 (統一在這裡) --- */}
+        <div style={{ marginTop: 24, paddingTop: 24, borderTop: '1px solid #f0f0f0' }}>
+            <h3 style={{ marginBottom: 12 }}>📝 通知模板管理</h3>
+            <Alert message="支援 Go Template 語法與 HTML 標籤 (如 <b>, <i>)" type="info" showIcon style={{ marginBottom: 16 }} />
+            
+            <Collapse defaultActiveKey={['expiry']}>
+                {/* 1. 到期/異常通知 (這是最重要的，放在第一個) */}
+                <Panel header="🔔 到期與異常告警 (Expiry / Error)" key="expiry">
+                    <VariableCheatSheet /> {/* 這是我們之前定義的組件 */}
+                    <Form.Item name="telegram_template" style={{ marginBottom: 0 }}>
+                        <TextArea rows={5} placeholder={DEFAULT_TEMPLATES.expiry} />
+                    </Form.Item>
+                </Panel>
+
+                {/* 2. 新增子域名 */}
+                <Panel header="🌱 新增子域名 (Add Domain)" key="add">
+                    <Form.Item name="notify_on_add" valuePropName="checked" style={{ marginBottom: 8 }}>
+                        <Switch checkedChildren="開啟通知" unCheckedChildren="關閉" />
+                    </Form.Item>
+                    <OpVariableCheatSheet /> {/* 這是之前定義的操作變數組件 */}
+                    <Form.Item name="notify_on_add_tpl" style={{ marginBottom: 0 }}>
+                        <TextArea rows={4} placeholder={DEFAULT_TEMPLATES.add} />
+                    </Form.Item>
+                </Panel>
+
+                {/* 3. 刪除子域名 */}
+                <Panel header="🗑 刪除子域名 (Delete Domain)" key="delete">
+                    <Form.Item name="notify_on_delete" valuePropName="checked" style={{ marginBottom: 8 }}>
+                         <Switch checkedChildren="開啟通知" unCheckedChildren="關閉" />
+                    </Form.Item>
+                    <OpVariableCheatSheet />
+                    <Form.Item name="notify_on_delete_tpl" style={{ marginBottom: 0 }}>
+                        <TextArea rows={4} placeholder={DEFAULT_TEMPLATES.delete} />
+                    </Form.Item>
+                </Panel>
+
+                {/* 4. SSL 續簽 */}
+                <Panel header="♻️ SSL 續簽結果 (Renew Result)" key="renew">
+                    <Form.Item name="notify_on_renew" valuePropName="checked" style={{ marginBottom: 8 }}>
+                        <Switch checkedChildren="開啟通知" unCheckedChildren="關閉" />
+                    </Form.Item>
+                    <OpVariableCheatSheet />
+                    <Form.Item name="notify_on_renew_tpl" style={{ marginBottom: 0 }}>
+                        <TextArea rows={4} placeholder={DEFAULT_TEMPLATES.renew} />
+                    </Form.Item>
+                </Panel>
+            </Collapse>
+        </div>
+
+        {/* --- 底部按鈕 --- */}
+        <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid #f0f0f0", display: "flex", justifyContent: "space-between" }}>
+          <Button onClick={() => testMutation.mutate()} loading={testMutation.isPending}>
             發送測試
           </Button>
-          <Button
-            type="primary"
-            htmlType="submit"
-            loading={saveMutation.isPending}
-          >
-            儲存設定
+          <Button type="primary" htmlType="submit" loading={saveMutation.isPending}>
+            儲存全部設定
           </Button>
         </div>
       </Form>
