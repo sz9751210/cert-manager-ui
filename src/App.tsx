@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Alert,
   Switch,
@@ -20,6 +20,9 @@ import {
   Table,
   Tag,
   Tooltip,
+  Timeline,
+  FloatButton, // [可選] 如果想用懸浮按鈕切換
+  ConfigProvider,
 } from "antd";
 import {
   DashboardOutlined,
@@ -38,6 +41,8 @@ import {
   EyeOutlined,
   InfoCircleOutlined,
   GlobalOutlined,
+  BulbOutlined,
+  BulbFilled,
 } from "@ant-design/icons";
 import {
   BrowserRouter,
@@ -81,7 +86,9 @@ const DomainListTable: React.FC<{
   filterStatus?: string;
   ignoredFilter: string;
   showCharts?: boolean; // [新增] 控制是否顯示圖表
-}> = ({ filterStatus, ignoredFilter, showCharts }) => {
+  isDarkMode?: boolean;
+}> = ({ filterStatus, ignoredFilter, showCharts, isDarkMode }) => {
+  const { token } = theme.useToken();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [onlyProxied, setOnlyProxied] = useState(false);
@@ -422,7 +429,7 @@ const DomainListTable: React.FC<{
       {" "}
       {/* 包一層 div */}
       {/* [新增] 顯示圖表 */}
-      {showCharts && <DashboardCharts stats={stats} loading={statsLoading} />}
+      {showCharts && <DashboardCharts stats={stats} loading={statsLoading} isDarkMode={isDarkMode} />}
       <Card bordered={false} style={{ borderRadius: "8px" }}>
         <div
           style={{
@@ -431,7 +438,7 @@ const DomainListTable: React.FC<{
             gap: 16,
             alignItems: "center",
             padding: "12px",
-            background: "#fafafa",
+            background: token.colorFillAlter,
             borderRadius: "4px",
           }}
         >
@@ -453,7 +460,7 @@ const DomainListTable: React.FC<{
             style={{
               width: 1,
               height: 24,
-              background: "#e0e0e0",
+              background: token.colorSplit,
               margin: "0 8px",
             }}
           ></div>
@@ -472,8 +479,8 @@ const DomainListTable: React.FC<{
             style={{
               marginBottom: 16,
               padding: "8px 16px",
-              background: "#e6f7ff",
-              border: "1px solid #91d5ff",
+              background: token.colorInfoBg,
+              border: `1px solid ${token.colorInfoBorder}`,
               borderRadius: 4,
               display: "flex",
               alignItems: "center",
@@ -797,7 +804,10 @@ const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
   );
 };
 // --- 主 Layout ---
-const MainLayout: React.FC = () => {
+const MainLayout: React.FC<{
+  isDarkMode: boolean;
+  toggleTheme: () => void;
+}> = ({ isDarkMode, toggleTheme }) => {
   const {
     token: { colorBgContainer },
   } = theme.useToken();
@@ -826,7 +836,11 @@ const MainLayout: React.FC = () => {
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      <Sider width={220} style={{ background: "#001529" }}>
+      <Sider
+        width={220}
+        theme={isDarkMode ? "dark" : "dark"}
+        style={{ background: isDarkMode ? "#001529" : "#001529" }}
+      >
         <div
           style={{
             height: "64px",
@@ -883,6 +897,14 @@ const MainLayout: React.FC = () => {
             {pageTitle}
           </Title>
           <Space>
+            {/* [新增] 主題切換按鈕 */}
+            <Tooltip title="切換深色/淺色模式">
+              <Button
+                shape="circle"
+                icon={isDarkMode ? <BulbFilled /> : <BulbOutlined />}
+                onClick={toggleTheme}
+              />
+            </Tooltip>
             <Button
               icon={<SettingOutlined />}
               onClick={() => setSettingsOpen(true)}
@@ -907,6 +929,10 @@ const MainLayout: React.FC = () => {
           </Space>
         </Header>
         <Content style={{ margin: "24px 16px", padding: 24, minHeight: 280 }}>
+          {/* ... Routes ... 
+                       注意：您可能需要把 isDarkMode 傳給 DomainListTable 
+                       如果要在裡面調整圖表顏色
+                   */}
           <Routes>
             {/* 1. 首頁：active_only, ignored=false */}
             <Route
@@ -916,6 +942,7 @@ const MainLayout: React.FC = () => {
                   filterStatus="active_only"
                   ignoredFilter="false"
                   showCharts={true}
+                  isDarkMode={isDarkMode}
                 />
               }
             />
@@ -928,6 +955,8 @@ const MainLayout: React.FC = () => {
                   filterStatus="unresolvable"
                   ignoredFilter="false"
                   showCharts={false}
+                  isDarkMode={isDarkMode}
+
                 />
               }
             />
@@ -936,7 +965,7 @@ const MainLayout: React.FC = () => {
             <Route
               path="/ignored"
               element={
-                <DomainListTable ignoredFilter="true" showCharts={false} />
+                <DomainListTable ignoredFilter="true" showCharts={false} isDarkMode={isDarkMode} />
               }
             />
           </Routes>
@@ -965,23 +994,54 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
 };
 
 const App: React.FC = () => {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
+    // 1. 初始化主題狀態 (優先從 localStorage 讀取)
+    const [isDarkMode, setIsDarkMode] = useState(() => {
+        const saved = localStorage.getItem('theme');
+        return saved === 'dark';
+    });
 
-        {/* 所有其他路徑都包在 MainLayout 內，並受保護 */}
-        <Route
-          path="/*"
-          element={
-            <ProtectedRoute>
-              <MainLayout />
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
-    </BrowserRouter>
-  );
+    // 2. 切換邏輯
+    const toggleTheme = () => {
+        const newMode = !isDarkMode;
+        setIsDarkMode(newMode);
+        localStorage.setItem('theme', newMode ? 'dark' : 'light');
+    };
+
+    // 3. 全域 Body 背景色控制
+    // ConfigProvider 只控制 AntD 元件，body 的背景色需要手動改，不然會是白的
+    useEffect(() => {
+        if (isDarkMode) {
+            document.body.style.backgroundColor = '#000000'; // 或 #141414 (AntD Dark 預設)
+            document.body.style.color = '#ffffff';
+        } else {
+            document.body.style.backgroundColor = '#f0f2f5';
+            document.body.style.color = '#000000';
+        }
+    }, [isDarkMode]);
+
+    return (
+        <ConfigProvider
+            theme={{
+                // 4. 神奇的一行程式碼：切換演算法
+                algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
+                token: {
+                    // 可以在這裡微調主色調
+                    colorPrimary: '#1890ff', 
+                },
+            }}
+        >
+            <BrowserRouter>
+                <Routes>
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/*" element={
+                        <ProtectedRoute>
+                            <MainLayout isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
+                        </ProtectedRoute>
+                    } />
+                </Routes>
+            </BrowserRouter>
+        </ConfigProvider>
+    );
 };
 
 export default App;

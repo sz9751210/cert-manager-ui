@@ -1,5 +1,5 @@
 // src/components/DashboardCharts.tsx
-import React from "react";
+import React, { useMemo } from "react";
 import { Card, Col, Row, Statistic } from "antd";
 import {
   PieChart,
@@ -34,16 +34,25 @@ const COLORS = {
 interface Props {
   stats: DashboardStats | undefined;
   loading: boolean;
+  isDarkMode?: boolean;
 }
 
-const DashboardCharts: React.FC<Props> = ({ stats, loading }) => {
+const DashboardCharts: React.FC<Props> = ({ stats, loading, isDarkMode }) => {
   if (!stats) return null;
 
+  // 定義文字顏色
+  const textColor = isDarkMode ? "#e6f7ff" : "#333";
+  const gridColor = isDarkMode ? "#444" : "#eee";
+
   // 1. 準備 Pie Chart 資料 (狀態分佈)
-  const pieData = Object.keys(stats.status_counts).map((key) => ({
-    name: key,
-    value: stats.status_counts[key],
-  }));
+  // 這樣只有當 stats 內容真的變更時，pieData 才會更新，避免 Recharts 頻繁重繪
+  const pieData = useMemo(() => {
+    if (!stats) return [];
+    return Object.keys(stats.status_counts).map((key) => ({
+      name: key,
+      value: stats.status_counts[key],
+    }));
+  }, [stats]);
 
   // 2. 準備 Bar Chart 資料 (發行商 Top 5)
   const barData = Object.keys(stats.issuer_counts)
@@ -120,6 +129,8 @@ const DashboardCharts: React.FC<Props> = ({ stats, loading }) => {
                   outerRadius={80}
                   paddingAngle={5}
                   dataKey="value"
+                  label={{ fill: textColor }}
+                  isAnimationActive={false}
                 >
                   {pieData.map((entry, index) => (
                     // @ts-ignore
@@ -129,8 +140,21 @@ const DashboardCharts: React.FC<Props> = ({ stats, loading }) => {
                     />
                   ))}
                 </Pie>
-                <RechartsTooltip />
-                <Legend />
+                <RechartsTooltip
+                  contentStyle={{
+                    backgroundColor: isDarkMode ? "#1f1f1f" : "#fff",
+                    borderColor: isDarkMode ? "#333" : "#ccc",
+                    borderRadius: "4px",
+                    color: textColor, // 建議把這一行取消註解，作為預設顏色
+                  }}
+                  itemStyle={{
+                    color: textColor,
+                  }}
+                  labelStyle={{
+                    color: textColor,
+                  }}
+                />
+                <Legend wrapperStyle={{ color: textColor }} />
               </PieChart>
             </ResponsiveContainer>
           </Card>
@@ -145,14 +169,27 @@ const DashboardCharts: React.FC<Props> = ({ stats, loading }) => {
           >
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={barData} layout="vertical">
-                <XAxis type="number" allowDecimals={false} />
+                <XAxis
+                  type="number"
+                  allowDecimals={false}
+                  tick={{ fill: textColor }}
+                />
                 <YAxis
                   dataKey="name"
                   type="category"
                   width={100}
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 12, fill: textColor }}
                 />
-                <RechartsTooltip />
+                <RechartsTooltip
+                  cursor={{
+                    fill: isDarkMode ? "rgba(255,255,255,0.1)" : "#f5f5f5",
+                  }}
+                  contentStyle={{
+                    backgroundColor: isDarkMode ? "#1f1f1f" : "#fff",
+                    borderColor: isDarkMode ? "#333" : "#ccc",
+                    color: textColor,
+                  }}
+                />
                 <Bar dataKey="count" fill="#1890ff" barSize={20} name="數量" />
               </BarChart>
             </ResponsiveContainer>
