@@ -631,6 +631,33 @@ const VariableCheatSheet = () => (
   </div>
 );
 
+// 變數說明元件 (共用)
+const OpVariableCheatSheet = () => (
+  <div
+    style={{
+      margin: "8px 0",
+      padding: 8,
+      background: "#f5f5f5",
+      borderRadius: 4,
+    }}
+  >
+    <Text type="secondary" style={{ fontSize: 12 }}>
+      可用變數:{" "}
+    </Text>
+    <Space size={4} wrap>
+      {["{{.Action}}", "{{.Domain}}", "{{.Details}}", "{{.Time}}"].map((v) => (
+        <Tag
+          key={v}
+          style={{ cursor: "pointer" }}
+          onClick={() => navigator.clipboard.writeText(v)}
+        >
+          {v}
+        </Tag>
+      ))}
+    </Space>
+  </div>
+);
+
 // --- 子組件：設定抽屜 ---
 const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
   open,
@@ -841,7 +868,96 @@ const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
             },
           ]}
         />
+        {/* 新增一個區塊：操作通知設定 */}
+        <div style={{ marginTop: 24 }}>
+          <h3 style={{ marginBottom: 16 }}>操作事件通知</h3>
+          <Collapse defaultActiveKey={["1"]}>
+            {/* 1. 新增域名設定 */}
+            <Panel header="新增域名 (Add Domain)" key="1">
+              <Form.Item
+                name="notify_on_add"
+                valuePropName="checked"
+                label="啟用通知"
+              >
+                <Switch />
+              </Form.Item>
+              {/* 使用 Form.Item 的 dependencies 屬性，只有當開關打開時才顯示模板編輯器 */}
+              <Form.Item
+                noStyle
+                shouldUpdate={(prev, curr) =>
+                  prev.notify_on_add !== curr.notify_on_add
+                }
+              >
+                {({ getFieldValue }) =>
+                  getFieldValue("notify_on_add") && (
+                    <>
+                      <OpVariableCheatSheet />
+                      <Form.Item name="notify_on_add_tpl" label="通知模板">
+                        <TextArea rows={3} placeholder="預設模板..." />
+                      </Form.Item>
+                    </>
+                  )
+                }
+              </Form.Item>
+            </Panel>
 
+            {/* 2. 刪除域名設定 */}
+            <Panel header="刪除域名 (Delete Domain)" key="2">
+              <Form.Item
+                name="notify_on_delete"
+                valuePropName="checked"
+                label="啟用通知"
+              >
+                <Switch />
+              </Form.Item>
+              <Form.Item
+                noStyle
+                shouldUpdate={(prev, curr) =>
+                  prev.notify_on_delete !== curr.notify_on_delete
+                }
+              >
+                {({ getFieldValue }) =>
+                  getFieldValue("notify_on_delete") && (
+                    <>
+                      <OpVariableCheatSheet />
+                      <Form.Item name="notify_on_delete_tpl" label="通知模板">
+                        <TextArea rows={3} />
+                      </Form.Item>
+                    </>
+                  )
+                }
+              </Form.Item>
+            </Panel>
+
+            {/* 3. 續簽設定 */}
+            <Panel header="SSL 續簽 (Renew Certificate)" key="3">
+              <Form.Item
+                name="notify_on_renew"
+                valuePropName="checked"
+                label="啟用通知"
+              >
+                <Switch />
+              </Form.Item>
+              <Form.Item
+                noStyle
+                shouldUpdate={(prev, curr) =>
+                  prev.notify_on_renew !== curr.notify_on_renew
+                }
+              >
+                {({ getFieldValue }) =>
+                  getFieldValue("notify_on_renew") && (
+                    <>
+                      <OpVariableCheatSheet />
+                      <Form.Item name="notify_on_renew_tpl" label="通知模板">
+                        <TextArea rows={3} />
+                      </Form.Item>
+                    </>
+                  )
+                }
+              </Form.Item>
+            </Panel>
+          </Collapse>
+        </div>
         <div
           style={{
             marginTop: 24,

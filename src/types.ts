@@ -38,3 +38,12 @@ export interface APIResponse<T> {
   page: number;
   limit: number;
 }
+
+export interface NotificationSettings {
+    notify_on_add: boolean;
+    notify_on_add_tpl: string;
+    notify_on_delete: boolean;
+    notify_on_delete_tpl: string;
+    notify_on_renew: boolean;
+    notify_on_renew_tpl: string;
+}
