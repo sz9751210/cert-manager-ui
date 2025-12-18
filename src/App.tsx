@@ -23,6 +23,7 @@ import {
   Timeline,
   FloatButton, // [可選] 如果想用懸浮按鈕切換
   ConfigProvider,
+  Collapse,
 } from "antd";
 import {
   DashboardOutlined,
@@ -80,6 +81,9 @@ dayjs.locale("zh-tw");
 
 const { Header, Content, Sider } = Layout;
 const { Title } = Typography;
+const { TextArea } = Input;
+const { Panel } = Collapse;
+const { Text } = Typography;
 
 // --- 子組件：域名列表 (可重用) ---
 const DomainListTable: React.FC<{
@@ -429,7 +433,13 @@ const DomainListTable: React.FC<{
       {" "}
       {/* 包一層 div */}
       {/* [新增] 顯示圖表 */}
-      {showCharts && <DashboardCharts stats={stats} loading={statsLoading} isDarkMode={isDarkMode} />}
+      {showCharts && (
+        <DashboardCharts
+          stats={stats}
+          loading={statsLoading}
+          isDarkMode={isDarkMode}
+        />
+      )}
       <Card bordered={false} style={{ borderRadius: "8px" }}>
         <div
           style={{
@@ -587,6 +597,40 @@ const DomainListTable: React.FC<{
   );
 };
 
+// 定義可用變數的說明元件
+const VariableCheatSheet = () => (
+  <div
+    style={{ marginTop: 8, padding: 8, background: "#f5f5f5", borderRadius: 4 }}
+  >
+    <Text type="secondary" style={{ fontSize: 12 }}>
+      可用變數 (點擊複製):{" "}
+    </Text>
+    <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
+      {[
+        "{{.Domain}}",
+        "{{.Days}}",
+        "{{.ExpiryDate}}",
+        "{{.Status}}",
+        "{{.Issuer}}",
+        "{{.IP}}",
+        "{{.TLS}}",
+        "{{.HTTPCode}}",
+      ].map((v) => (
+        <Tag
+          key={v}
+          style={{ cursor: "pointer" }}
+          onClick={() => {
+            navigator.clipboard.writeText(v);
+            // 這裡可以加個 message.success('已複製')
+          }}
+        >
+          {v}
+        </Tag>
+      ))}
+    </div>
+  </div>
+);
+
 // --- 子組件：設定抽屜 ---
 const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
   open,
@@ -684,6 +728,17 @@ const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
                       )
                     }
                   </Form.Item>
+                  <Form.Item
+                    label="自定義通知模板"
+                    name="webhook_template"
+                    tooltip="支援 Go Template 語法"
+                  >
+                    <TextArea
+                      rows={4}
+                      placeholder="預設值：&#10;⚠️ [監控告警]&#10;域名: {{.Domain}}&#10;剩餘: {{.Days}} 天"
+                    />
+                  </Form.Item>
+                  <VariableCheatSheet />
                 </div>
               ),
             },
@@ -736,6 +791,17 @@ const SettingsDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({
                           >
                             <Input placeholder="-987654321" />
                           </Form.Item>
+                          <Form.Item
+                            label="自定義通知模板"
+                            name="telegram_template"
+                            tooltip="支援 Go Template 語法"
+                          >
+                            <TextArea
+                              rows={4}
+                              placeholder="預設值：&#10;⚠️ [監控告警]&#10;域名: {{.Domain}}&#10;剩餘: {{.Days}} 天"
+                            />
+                          </Form.Item>
+                          <VariableCheatSheet />
                         </>
                       )
                     }
@@ -956,7 +1022,6 @@ const MainLayout: React.FC<{
                   ignoredFilter="false"
                   showCharts={false}
                   isDarkMode={isDarkMode}
-
                 />
               }
             />
@@ -965,7 +1030,11 @@ const MainLayout: React.FC<{
             <Route
               path="/ignored"
               element={
-                <DomainListTable ignoredFilter="true" showCharts={false} isDarkMode={isDarkMode} />
+                <DomainListTable
+                  ignoredFilter="true"
+                  showCharts={false}
+                  isDarkMode={isDarkMode}
+                />
               }
             />
           </Routes>
@@ -994,54 +1063,57 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
 };
 
 const App: React.FC = () => {
-    // 1. 初始化主題狀態 (優先從 localStorage 讀取)
-    const [isDarkMode, setIsDarkMode] = useState(() => {
-        const saved = localStorage.getItem('theme');
-        return saved === 'dark';
-    });
+  // 1. 初始化主題狀態 (優先從 localStorage 讀取)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem("theme");
+    return saved === "dark";
+  });
 
-    // 2. 切換邏輯
-    const toggleTheme = () => {
-        const newMode = !isDarkMode;
-        setIsDarkMode(newMode);
-        localStorage.setItem('theme', newMode ? 'dark' : 'light');
-    };
+  // 2. 切換邏輯
+  const toggleTheme = () => {
+    const newMode = !isDarkMode;
+    setIsDarkMode(newMode);
+    localStorage.setItem("theme", newMode ? "dark" : "light");
+  };
 
-    // 3. 全域 Body 背景色控制
-    // ConfigProvider 只控制 AntD 元件，body 的背景色需要手動改，不然會是白的
-    useEffect(() => {
-        if (isDarkMode) {
-            document.body.style.backgroundColor = '#000000'; // 或 #141414 (AntD Dark 預設)
-            document.body.style.color = '#ffffff';
-        } else {
-            document.body.style.backgroundColor = '#f0f2f5';
-            document.body.style.color = '#000000';
-        }
-    }, [isDarkMode]);
+  // 3. 全域 Body 背景色控制
+  // ConfigProvider 只控制 AntD 元件，body 的背景色需要手動改，不然會是白的
+  useEffect(() => {
+    if (isDarkMode) {
+      document.body.style.backgroundColor = "#000000"; // 或 #141414 (AntD Dark 預設)
+      document.body.style.color = "#ffffff";
+    } else {
+      document.body.style.backgroundColor = "#f0f2f5";
+      document.body.style.color = "#000000";
+    }
+  }, [isDarkMode]);
 
-    return (
-        <ConfigProvider
-            theme={{
-                // 4. 神奇的一行程式碼：切換演算法
-                algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
-                token: {
-                    // 可以在這裡微調主色調
-                    colorPrimary: '#1890ff', 
-                },
-            }}
-        >
-            <BrowserRouter>
-                <Routes>
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/*" element={
-                        <ProtectedRoute>
-                            <MainLayout isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
-                        </ProtectedRoute>
-                    } />
-                </Routes>
-            </BrowserRouter>
-        </ConfigProvider>
-    );
+  return (
+    <ConfigProvider
+      theme={{
+        // 4. 神奇的一行程式碼：切換演算法
+        algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
+        token: {
+          // 可以在這裡微調主色調
+          colorPrimary: "#1890ff",
+        },
+      }}
+    >
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <MainLayout isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </BrowserRouter>
+    </ConfigProvider>
+  );
 };
 
 export default App;
